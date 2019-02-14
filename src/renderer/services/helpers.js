@@ -24,8 +24,7 @@ export default {
         item.feedUrl = item.url
         return item
       })
-      this.subscribe(rssFeedUrls, null, false)
-      return true
+      return this.subscribe(rssFeedUrls, null, false, false)
     }
   },
   exportOpml () {
@@ -77,7 +76,7 @@ export default {
         }
       })
       cb()
-    }, 2)
+    }, 10)
 
     q.drain = () => {
       console.log('all feeds are processed')

@@ -22,12 +22,16 @@ const mutations = {
     const index = _.findIndex(state.feeds, { 'id': id })
     db.deleteFeed(id)
     state.feeds.splice(index, 1)
+  },
+  ORDER_FEEDS (state, feeds) {
+    state.feeds = feeds
   }
 }
 
 const actions = {
   loadFeeds ({ commit }) {
     db.fetchFeeds(docs => {
+      console.log(docs)
       commit('LOAD_FEEDS', docs)
     })
   },
@@ -39,6 +43,9 @@ const actions = {
   async deleteFeed ({ dispatch, commit }, id) {
     await dispatch('deleteArticle', id)
     commit('DELETE_FEED', id)
+  },
+  orderFeeds ({ commit }, feeds) {
+    commit('ORDER_FEEDS', feeds)
   }
 }
 

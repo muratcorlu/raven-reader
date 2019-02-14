@@ -20,6 +20,7 @@ if (process.env.NODE_ENV !== 'development') {
 }
 
 let mainWindow
+let preferenceWindow
 let trayImage
 let tray
 const winURL = process.env.NODE_ENV === 'development' ? `http://localhost:9080` : `file://${__dirname}/index.html`
@@ -27,30 +28,116 @@ const store = new Store()
 
 function createMenu () {
   // Create the Application's main menu
-  const template = [{
-    label: 'Application',
-    submenu: [
-      { label: 'About Application', selector: 'orderFrontStandardAboutPanel:' },
-      { type: 'separator' },
-      { label: 'Quit',
-        accelerator: 'Command+Q',
-        click: function () {
-          app.quit()
-        } }
-    ] }, {
-    label: 'Edit',
-    submenu: [
-      { label: 'Undo', accelerator: 'CmdOrCtrl+Z', selector: 'undo:' },
-      { label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z', selector: 'redo:' },
-      { type: 'separator' },
-      { label: 'Cut', accelerator: 'CmdOrCtrl+X', selector: 'cut:' },
-      { label: 'Copy', accelerator: 'CmdOrCtrl+C', selector: 'copy:' },
-      { label: 'Paste', accelerator: 'CmdOrCtrl+V', selector: 'paste:' },
-      { label: 'Select All', accelerator: 'CmdOrCtrl+A', selector: 'selectAll:' }
-    ] }
+  const template = [
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'pasteandmatchstyle' },
+        { role: 'delete' },
+        { role: 'selectall' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forcereload' },
+        { role: 'toggledevtools' },
+        { type: 'separator' },
+        { role: 'resetzoom' },
+        { role: 'zoomin' },
+        { role: 'zoomout' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      role: 'window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'close' }
+      ]
+    },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'Learn More',
+          click () { require('electron').shell.openExternal('https://electronjs.org') }
+        }
+      ]
+    }
   ]
 
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+  if (process.platform === 'darwin') {
+    template.unshift({
+      label: app.getName(),
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { label: 'Preferences',
+          accelerator: 'Command+,',
+          click: function () {
+            if (typeof preferenceWindow === 'undefined' || preferenceWindow === null || preferenceWindow.isDestroyed()) {
+              const modalPath = process.env.NODE_ENV === 'development' ? 'http://localhost:9080/#/user-preference'
+                : `file://${__dirname}/index.html#user-preference`
+              preferenceWindow = new BrowserWindow({
+                width: 860,
+                height: 700,
+                webPreferences: {
+                  webSecurity: false
+                },
+                useContentSize: false,
+                resizable: false
+              })
+              preferenceWindow.setTitle('Preferences')
+              preferenceWindow.loadURL(modalPath)
+            } else {
+              preferenceWindow.show()
+            }
+          }
+        },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideothers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    })
+
+    // Edit menu
+    template[1].submenu.push(
+      { type: 'separator' },
+      {
+        label: 'Speech',
+        submenu: [
+          { role: 'startspeaking' },
+          { role: 'stopspeaking' }
+        ]
+      }
+    )
+
+    // Window menu
+    template[3].submenu = [
+      { role: 'close' },
+      { role: 'minimize' },
+      { role: 'zoom' },
+      { type: 'separator' },
+      { role: 'front' }
+    ]
+  }
+
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
 }
 
 function createTray () {
@@ -69,13 +156,7 @@ function createTray () {
   tray = new Tray(trayImage)
 
   const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Quit',
-      click: () => {
-        app.isQuiting = true
-        app.quit()
-      }
-    }
+    { role: 'quit' }
   ])
 
   tray.on('right-click', () => {
@@ -112,6 +193,7 @@ function createWindow () {
     minHeight: 768,
     minWidth: 1204,
     width: 1204,
+    title: 'Raven Reader',
     height: 768
   })
 
@@ -136,6 +218,7 @@ function createWindow () {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    preferenceWindow = null
   })
 
   mainWindow.on('close', (event) => {
@@ -176,6 +259,10 @@ app.on('window-all-closed', () => {
 
 ipcMain.on('online-status-changed', (event, status) => {
   event.sender.send('onlinestatus', status)
+})
+
+ipcMain.on('settingsChanged', (event, arg) => {
+  mainWindow.webContents.send('settingsChanged', arg)
 })
 
 app.on('activate', () => {

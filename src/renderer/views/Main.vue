@@ -8,37 +8,36 @@
             <router-link class="nav-link" to="/all" active-class="active">
               <feather-icon name="list"></feather-icon>
               All Feeds <span class="sr-only">(current)</span>
+              <span class="items-counter" v-if="getArticlesCount('','') > 0">{{ getArticlesCount('','') }}</span>
             </router-link>
           </li>
           <li class="nav-item">
             <router-link class="nav-link" to="/favourites" active-class="active">
               <feather-icon name="star"></feather-icon>
               Favourites
+              <span class="items-counter" v-if="getArticlesCount('favourites', '') > 0">{{ getArticlesCount('favourites', '') }}</span>
             </router-link>
           </li>
           <li class="nav-item">
             <router-link class="nav-link" to="/unread" active-class="active">
               <feather-icon name="circle"></feather-icon>
               Unread Articles
+              <span class="items-counter" v-if="getArticlesCount('unread', '') > 0">{{ getArticlesCount('unread', '') }}</span>
             </router-link>
           </li>
-          <li class="nav-item">
+          <li class="nav-item" v-if="$store.state.Setting.recentlyRead === 'on'">
             <router-link class="nav-link" to="/read" active-class="active">
               <feather-icon name="circle" filled></feather-icon>
               Recently Read
+              <span class="items-counter" v-if="getArticlesCount('read', '') > 0">{{ getArticlesCount('read', '') }}</span>
             </router-link>
           </li>
           <li class="nav-item">
             <router-link class="nav-link" to="/saved" active-class="active">
               <feather-icon name="wifi-off"></feather-icon>
               Saved articles
+              <span class="items-counter" v-if="getArticlesCount('saved', '') > 0">{{ getArticlesCount('saved', '') }}</span>
             </router-link>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="#" @click="exportOpml">
-              <feather-icon name="external-link"></feather-icon>
-              Export Subscriptions
-            </a>
           </li>
           <li class="nav-item">
             <a class="nav-link" href="#" v-b-modal.importfeed>
@@ -50,18 +49,6 @@
             <a class="nav-link" href="#" v-b-modal.markallread>
               <feather-icon name="check-square"></feather-icon>
               Mark all as read
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="#" v-b-modal.settings>
-              <feather-icon name="settings"></feather-icon>
-              Settings
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="#" v-b-modal.integrations>
-              <feather-icon name="package"></feather-icon>
-              Integrations
             </a>
           </li>
         </ul>
@@ -81,10 +68,7 @@
     </nav>
     <article-list :type="articleType" :feed="feed" @type-change="updateType" ref="articleList"></article-list>
     <article-detail :id="$route.params.id" :article="articleData" :emptyState="empty" :loading="loading" ref="articleDetail"></article-detail>
-    <import-modal></import-modal>
-    <settings-modal></settings-modal>
     <markallread-modal></markallread-modal>
-    <sync-settings></sync-settings>
   </div>
 </template>
 <script>
@@ -96,10 +80,11 @@ import stat from 'reading-time'
 import scheduler from 'node-schedule'
 import log from 'electron-log'
 import helper from '../services/helpers'
-import notifier from 'node-notifier'
-import fs from 'fs'
-import path from 'path'
 import cacheService from '../services/cacheArticle'
+import _ from 'lodash'
+import Store from 'electron-store'
+
+const store = new Store()
 
 export default {
   data () {
@@ -114,20 +99,28 @@ export default {
   mounted () {
     const self = this
     this.$refs.articleList.$refs.statusMsg.innerText = 'Syncing...'
+    self.$store.dispatch('loadSettings')
     this.$store.dispatch('refreshFeeds')
     this.$store.dispatch('loadFeeds')
     this.$store.dispatch('loadArticles')
+    this.unreadChange()
     this.$store.dispatch('checkOffline')
-    helper.syncInoReader()
+
+    // Sync Inoreader if connected
+    if (store.get('inoreader_token') && !this.$store.state.Setting.offline) {
+      helper.syncInoReader()
+    }
 
     this.$electron.ipcRenderer.on('onlinestatus', (event, status) => {
       self.$store.dispatch('setOffline', status)
     })
 
     // Sync Updates
-    scheduler.scheduleJob('* * * * *', async function () {
+    scheduler.scheduleJob('* * * * *', () => {
       self.$refs.articleList.$refs.statusMsg.innerText = 'Syncing...'
-      await helper.syncInoReader()
+      if (store.get('inoreader_token') && !self.$store.state.Setting.offline) {
+        helper.syncInoReader()
+      }
       log.info('Syncing inoreader')
     })
     // Feed Crawling
@@ -141,6 +134,7 @@ export default {
         helper.subscribe(feeds, null, true, false)
         self.$store.dispatch('loadArticles')
       }
+      self.unreadChange()
     })
 
     if (this.$store.state.Setting.offline) {
@@ -153,12 +147,23 @@ export default {
         job.reschedule()
       }
     })
+
+    // Refresh settings on preference change
+    this.$electron.ipcRenderer.on('settingsChanged', (event, arg) => {
+      if (arg.inoReaderSync) {
+        helper.syncInoReader()
+      }
+      self.$store.dispatch('loadSettings')
+      self.$store.dispatch('loadFeeds')
+      self.$store.dispatch('loadArticles')
+    })
   },
   watch: {
     // call again the method if the route changes
     '$route.params.feedid': 'feedChange',
     '$route.params.type': 'typeChange',
-    '$route.params.id': 'fetchData'
+    '$route.params.id': 'fetchData',
+    allUnread: 'unreadChange'
   },
   computed: {
     feeds () {
@@ -166,22 +171,23 @@ export default {
     }
   },
   methods: {
-    exportOpml () {
-      const xmlData = helper.exportOpml()
-      const self = this
-      fs.unlink(`${self.$electron.remote.app.getPath('downloads')}/subscriptions.xml`, (err) => {
-        if (err && err.code !== 'ENOENT') throw err
-        fs.writeFile(`${self.$electron.remote.app.getPath('downloads')}/subscriptions.xml`, xmlData, { flag: 'w', encoding: 'utf8' }, (err) => {
-          if (err) throw err
-          console.log('XML Saved')
-        })
-      })
-      notifier.notify({
-        icon: path.join(__static, '/logo_icon.png'),
-        title: 'Feeds exported',
-        message: `All feeds are exported as opml in downloads folder.`,
-        sound: true
-      })
+    getArticlesCount (type, feedid) {
+      let articles = this.$store.state.Article.articles
+      if (feedid !== '') {
+        articles = articles.filter(article => article.feed_id === feedid)
+      }
+      if (type === 'read') {
+        return articles.filter(article => article.read).length
+      } else if (type === 'unread') {
+        return articles.filter(article => !article.read).length
+      } else if (type === 'favourites') {
+        return articles.filter(article => article.favourite).length
+      } else if (type === 'saved') {
+        return articles.filter(article => article.offline).length
+      } else {
+        // all
+        return articles.length
+      }
     },
     updateType (newVal) {
       this.articleType = newVal
@@ -202,6 +208,18 @@ export default {
     unsubscribeFeed (id) {
       this.$emit('delete', 'yes')
       this.$store.dispatch('deleteFeed', id)
+    },
+    unreadChange () {
+      // unread changed, sort feeds by unread count
+      if (!this.feeds) {
+        return
+      }
+      let feedsCopy = this.feeds.map((item) => {
+        item.unread = this.getArticlesCount('unread', item.id)
+        return item
+      })
+      feedsCopy = _.orderBy(feedsCopy, ['unread'], ['desc'])
+      this.$store.dispatch('orderFeeds', feedsCopy)
     },
     prepareArticleData (data, article) {
       const self = this
@@ -382,5 +400,13 @@ export default {
   .feather-filled {
     fill: #fff;
   }
+}
+
+.items-counter {
+  float:right;
+}
+
+.items-counter-feed {
+  padding-right: 10px;
 }
 </style>

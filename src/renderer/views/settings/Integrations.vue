@@ -1,31 +1,32 @@
 <template>
-<b-modal id="integrations" ref="integrations" size="md" title="Integrations" hide-footer centered>
-  <div class="row">
-    <div class="col">
-      <p class="text-left">Inoreader</p>
-    </div>
-    <div class="col">
-      <button class="btn-primary float-right" @click="signIn" v-if="!inoreader_connected">Connect</button>
-      <button class="btn-danger float-right" @click="disconnect" v-if="inoreader_connected">Disconnect</button>
+  <div class="preference-container">
+    <div class="col p-4">
+      <div class="row">
+        <div class="col">
+          <p class="text-left">Inoreader</p>
+        </div>
+        <div class="col">
+          <button class="btn-primary float-right" @click="signIn" v-if="!inoreader_connected">Connect</button>
+          <button class="btn-danger float-right" @click="disconnect" v-if="inoreader_connected">Disconnect</button>
+        </div>
+      </div>
+      <div class="row" v-if="inoreader_connected">
+        <div class="col">
+          <p>Sync feeds from inoreader</p>
+        </div>
+        <div class="col">
+          <button class="btn-primary float-right" @click="syncFeedsFromInoreader">
+            Sync Feeds
+          </button>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="row" v-if="inoreader_connected">
-    <div class="col">
-      <p>Sync feeds from inoreader</p>
-    </div>
-    <div class="col">
-      <button class="btn-primary float-right" @click="syncFeedsFromInoreader">
-        Sync Feeds
-      </button>
-    </div>
-  </div>
-</b-modal>
 </template>
 <script>
-import oauth from '../services/oauth'
+import oauth from '../../services/oauth'
 import { URL } from 'url'
 import { setImmediate } from 'timers'
-import helper from '../services/helpers'
 import Store from 'electron-store'
 
 const store = new Store()
@@ -63,7 +64,6 @@ export default {
           const urlItem = new URL(url)
           const params = urlItem.searchParams
           const hostname = urlItem.hostname
-          console.log(params)
           if (params) {
             if (params.get('error')) {
               authWindow.removeAllListeners('closed')
@@ -98,11 +98,11 @@ export default {
       })
     },
     disconnect () {
-      localStorage.removeItem('inoreader_token')
+      store.delete('inoreader_token')
       this.inoreader_connected = false
     },
     async syncFeedsFromInoreader () {
-      await helper.syncInoReader()
+      this.$electron.ipcRenderer.send('settingsChanged', { inoReaderSync: true })
     },
     async signIn () {
       let token

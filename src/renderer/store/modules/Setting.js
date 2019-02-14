@@ -4,6 +4,8 @@ const state = {
   cronSettings: '*/5 * * * *',
   darkMode: false,
   offline: false,
+  markallAsk: false,
+  recentlyRead: 'on',
   proxy: {
     http: '',
     https: '',
@@ -18,6 +20,8 @@ const mutations = {
     state.cronSettings = store.get('settings.cronjob')
     state.darkMode = store.get('settings.darkMode')
     state.proxy = store.get('settings.proxy')
+    state.recentlyRead = store.get('settings.recentlyRead')
+    state.markallAsk = store.get('settings.markallAsk')
   },
   CHECK_OFFLINE (state) {
     state.offline = !navigator.onLine
@@ -33,6 +37,12 @@ const mutations = {
   },
   SET_PROXY (state, data) {
     state.proxy = data
+  },
+  SET_MARKALL_ASK (state, data) {
+    state.markallAsk = data
+  },
+  SET_RECENTLY_READ (state, data) {
+    state.recentlyRead = data
   }
 }
 
@@ -57,6 +67,14 @@ const actions = {
   setProxy ({ commit }, data) {
     store.set('settings.proxy', data)
     commit('SET_PROXY')
+  },
+  setMarkAllAsk ({ commit }, data) {
+    store.set('settings.markallAsk', data)
+    commit('SET_MARKALL_ASK')
+  },
+  setRecentlyRead ({ commit }, data) {
+    store.set('settings.recentlyRead', data)
+    commit('SET_RECENTLY_READ')
   }
 }
 
